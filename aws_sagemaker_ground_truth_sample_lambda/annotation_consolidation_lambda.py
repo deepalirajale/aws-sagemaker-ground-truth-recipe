@@ -144,7 +144,7 @@ def do_consolidation(labeling_job_arn, payload, label_attribute_name, s3_client)
                 annotation_s3_uri = annotations[i]['annotationData'].get('s3uri')
                 annotation = annotation_content if annotation_s3_uri is None else s3_client.get_object_from_s3(
                     annotation_s3_uri)
-                annotation_from_single_worker = json.loads(annotation)
+                annotation_from_single_worker = json.dumps(annotation)
 
                 print("{} Received Annotations from worker [{}] is [{}]"
                       .format(log_prefix, worker_id, annotation_from_single_worker))

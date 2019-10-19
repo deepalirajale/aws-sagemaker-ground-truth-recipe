@@ -1,5 +1,6 @@
 import json
-
+import boto3
+from urllib.parse import urlparse
 
 def lambda_handler(event, context):
     """Sample PreHumanTaskLambda ( pre-processing lambda) for custom labeling jobs.
@@ -43,7 +44,7 @@ def lambda_handler(event, context):
            "taskInput":{
               "taskObject":src_url_http
            },
-           "humanAnnotationRequired":"true"
+           "isHumanAnnotationRequired":"true"
         }
 
 
@@ -57,26 +58,70 @@ def lambda_handler(event, context):
     print("Received event: " + json.dumps(event, indent=2))
 
     # Get source if specified
-    source = event['dataObject']['source'] if "source" in event['dataObject'] else None
+    #source = event['dataObject']['source'] if "source" in event['dataObject'] else None
+    source = event['dataObject']['video']
 
     # Get source-ref if specified
-    source_ref = event['dataObject']['source-ref'] if "source-ref" in event['dataObject'] else None
+    #source_ref = event['dataObject']['source-ref'] if "source-ref" in event['dataObject'] else None
 
     # if source field present, take that otherwise take source-ref
-    task_object = source if source is not None else source_ref
+    #task_object = source if source is not None else source_ref
+    task_object = source
 
     # Build response object
     output = {
         "taskInput": {
-            "taskObject": task_object
+            "taskObject": format_input(task_object)
         },
-        "humanAnnotationRequired": "true"
+        "isHumanAnnotationRequired": "true"
     }
 
     print(output)
     # If neither source nor source-ref specified, mark the annotation failed
     if task_object is None:
         print(" Failed to pre-process {} !".format(event["labelingJobArn"]))
-        output["humanAnnotationRequired"] = "false"
+        output["isHumanAnnotationRequired"] = "false"
 
     return output
+
+
+def format_input(task_object):
+    new_obj = {}
+    new_obj = { "title" : task_object["title"],
+                "currentFrame" : task_object["currentFrame"]}
+    
+    new_frames = []
+    for o in task_object['frames']:
+        new_frames.append({"url": create_presigned_url(o["url"], expiration=864000), "seq_id": o["seq_id"]})
+    
+    new_obj["frames"] = new_frames
+    
+    return new_obj
+
+def create_presigned_url(object_s3_uri, expiration):
+    """Generate a presigned URL to share an S3 object
+
+    :param object_s3_uri: string
+    :param expiration: Time in seconds for the presigned URL to remain valid
+    :return: Presigned URL as string. If error, returns None.
+    """
+
+    # Generate a presigned URL for the S3 object
+    s3_client = boto3.client('s3')
+    object_url = urlparse(object_s3_uri)
+    bucket_name = object_url.netloc
+    object_name=object_url.path[1:]
+    
+    try:
+        response = s3_client.generate_presigned_url('get_object',
+                                                    Params={'Bucket': bucket_name,
+                                                            'Key': object_name},
+                                                    ExpiresIn=expiration)
+                                                    
+        print("S3 signed url :{}".format(response))                                            
+    except ClientError as e:
+        logging.error(e)
+        return None
+
+    # The response contains the presigned URL
+    return response
